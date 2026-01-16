@@ -128,12 +128,26 @@ function genMap(seed: number, w = 56, h = 40) {
   return { seed, w, h, grid };
 }
 
+export const runtime = "edge";
+
+type Body = { seed?: number | string };
+
 export async function POST(req: Request) {
-  const body = await req.json().catch(() => ({}));
-  const seed = Number.isFinite(body?.seed) ? Number(body.seed) : Math.floor(Math.random() * 1e9);
+  let body: Body = {};
+  try {
+    body = (await req.json()) as Body;
+  } catch {
+    body = {};
+  }
+
+  const raw = body.seed;
+  const n =
+    typeof raw === "number" ? raw :
+    typeof raw === "string" ? parseInt(raw, 10) :
+    NaN;
+
+  const seed = Number.isFinite(n) ? n : Math.floor(Math.random() * 1e9);
 
   const map = genMap(seed);
-
-  // isso responde JSON usando Web Response API (Route Handlers)
   return Response.json(map);
 }
