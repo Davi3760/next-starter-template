@@ -1,88 +1,108 @@
-import Image from "next/image";
+"use client";
+
+import { useMemo, useState } from "react";
+
+type Tile = "G" | "W" | "R" | "F" | "H" | "S" | "N";
+type ApiMap = { seed: number; w: number; h: number; grid: Tile[][] };
+
+function colorOf(t: Tile) {
+  switch (t) {
+    case "G": return "#b7f0b1";
+    case "W": return "#7cc7ff";
+    case "R": return "#d7c6a5";
+    case "F": return "#9aa3ad";
+    case "H": return "#cfe7ff";
+    case "S": return "#ffd86b";
+    case "N": return "#ff8fb1";
+  }
+}
 
 export default function Home() {
-	return (
-		<div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-			<main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-				<Image
-					className="dark:invert"
-					src="/next.svg"
-					alt="Next.js logo"
-					width={180}
-					height={38}
-					priority
-				/>
-				<ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-					<li className="mb-2 tracking-[-.01em]">
-						Get started by editing{" "}
-						<code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-							src/app/page.tsx
-						</code>
-						.
-					</li>
-					<li className="tracking-[-.01em]">
-						Save and see your changes instantly.
-					</li>
-				</ol>
+  const [seed, setSeed] = useState(() => String(Math.floor(Math.random() * 1e9)));
+  const [zoom, setZoom] = useState(2);
+  const [data, setData] = useState<ApiMap | null>(null);
+  const [err, setErr] = useState<string>("");
 
-				<div className="flex gap-4 items-center flex-col sm:flex-row">
-					<a
-						className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-						href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-						target="_blank"
-						rel="noopener noreferrer"
-					>
-						Read our docs
-					</a>
-				</div>
-			</main>
-			<footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-				<a
-					className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-					href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-					target="_blank"
-					rel="noopener noreferrer"
-				>
-					<Image
-						aria-hidden
-						src="/file.svg"
-						alt="File icon"
-						width={16}
-						height={16}
-					/>
-					Learn
-				</a>
-				<a
-					className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-					href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-					target="_blank"
-					rel="noopener noreferrer"
-				>
-					<Image
-						aria-hidden
-						src="/window.svg"
-						alt="Window icon"
-						width={16}
-						height={16}
-					/>
-					Examples
-				</a>
-				<a
-					className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-					href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-					target="_blank"
-					rel="noopener noreferrer"
-				>
-					<Image
-						aria-hidden
-						src="/globe.svg"
-						alt="Globe icon"
-						width={16}
-						height={16}
-					/>
-					Go to nextjs.org →
-				</a>
-			</footer>
-		</div>
-	);
+  const tileSize = useMemo(() => 8 * zoom, [zoom]);
+
+  async function gerar() {
+    setErr("");
+    try {
+      const s = parseInt(seed || "0", 10);
+      const res = await fetch("/api/generateMap", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ seed: Number.isFinite(s) ? s : undefined }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = (await res.json()) as ApiMap;
+      setData(json);
+      setSeed(String(json.seed));
+    } catch (e: any) {
+      setErr(String(e?.message ?? e));
+    }
+  }
+
+  return (
+    <main style={{ fontFamily: "system-ui", padding: 20, color: "#111" }}>
+      <h1>Next.js no Cloudflare Workers — UI pública + API “protegida”</h1>
+      <p>O mapa é gerado no servidor (/api/generateMap) e o browser só renderiza.</p>
+
+      <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", margin: "16px 0" }}>
+        <label>Seed:&nbsp;
+          <input value={seed} onChange={(e) => setSeed(e.target.value)} style={{ width: 180, padding: 6 }} />
+        </label>
+
+        <button onClick={() => setSeed(String(Math.floor(Math.random() * 1e9)))} style={{ padding: "8px 12px" }}>
+          Seed aleatória
+        </button>
+
+        <button onClick={gerar} style={{ padding: "8px 12px", fontWeight: 700 }}>
+          Gerar novamente
+        </button>
+
+        <label>Zoom:&nbsp;
+          <select value={zoom} onChange={(e) => setZoom(parseInt(e.target.value, 10))}>
+            <option value={1}>1x</option>
+            <option value={2}>2x</option>
+            <option value={3}>3x</option>
+            <option value={4}>4x</option>
+          </select>
+        </label>
+
+        {err ? <span style={{ color: "#c00" }}>Erro: {err}</span> : null}
+      </div>
+
+      {!data ? (
+        <div style={{ padding: 16, background: "#f3f4f6", borderRadius: 12 }}>
+          Clique em <b>Gerar novamente</b>.
+        </div>
+      ) : (
+        <div style={{ display: "inline-block", border: "1px solid #ddd", borderRadius: 12, overflow: "hidden" }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: `repeat(${data.w}, ${tileSize}px)`,
+              background: "#00000010",
+            }}
+          >
+            {data.grid.flatMap((row, y) =>
+              row.map((t, x) => (
+                <div
+                  key={`${x},${y}`}
+                  title={`${t} (${x},${y})`}
+                  style={{
+                    width: tileSize,
+                    height: tileSize,
+                    background: colorOf(t),
+                    outline: "1px solid #00000010",
+                  }}
+                />
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </main>
+  );
 }
