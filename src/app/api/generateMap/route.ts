@@ -1,5 +1,4 @@
 // src/app/api/generateMap/route.ts
-export const runtime = "edge"; // bom para Workers/edge
 
 type Tile = "G" | "W" | "R" | "F" | "H" | "S" | "N";
 
