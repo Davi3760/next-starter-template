@@ -128,8 +128,6 @@ function genMap(seed: number, w = 56, h = 40) {
   return { seed, w, h, grid };
 }
 
-export const runtime = "edge";
-
 type Body = { seed?: number | string };
 
 export async function POST(req: Request) {
