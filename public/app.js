@@ -559,133 +559,6 @@ const imageInput = document.getElementById("imageInput");
         };
       }
 
-      function placeStamp(grid, mapW, mapH, stamp, wantsPathAdjacency, pathId, grassIndex) {
-        const maxX = mapW - stamp.width;
-        const maxY = mapH - stamp.height;
-        if (maxX < 0 || maxY < 0) return false;
-
-        for (let attempt = 0; attempt < 120; attempt += 1) {
-          const ox = Math.floor(Math.random() * (maxX + 1));
-          const oy = Math.floor(Math.random() * (maxY + 1));
-          let fits = true;
-          for (const cell of stamp.cells) {
-            const idx = getGridIndex(mapW, ox + cell.dx, oy + cell.dy);
-            if (grid[idx] !== grassIndex) {
-              fits = false;
-              break;
-            }
-          }
-          if (!fits) continue;
-          if (wantsPathAdjacency) {
-            let touchingPath = false;
-            for (const cell of stamp.cells) {
-              const gx = ox + cell.dx;
-              const gy = oy + cell.dy;
-              const neighbors = [
-                [gx + 1, gy],
-                [gx - 1, gy],
-                [gx, gy + 1],
-                [gx, gy - 1],
-              ];
-              for (const [nx, ny] of neighbors) {
-                if (nx < 0 || ny < 0 || nx >= mapW || ny >= mapH) continue;
-                if (grid[getGridIndex(mapW, nx, ny)] === pathId) {
-                  touchingPath = true;
-                  break;
-                }
-              }
-              if (touchingPath) break;
-            }
-            if (!touchingPath) continue;
-          }
-          for (const cell of stamp.cells) {
-            const idx = getGridIndex(mapW, ox + cell.dx, oy + cell.dy);
-            grid[idx] = cell.paletteIndex;
-          }
-          return true;
-        }
-        return false;
-      }
-
-      function placeStampAt(grid, mapW, mapH, stamp, x, y, grassIndex) {
-        if (x < 0 || y < 0 || x + stamp.width > mapW || y + stamp.height > mapH) return false;
-        for (const cell of stamp.cells) {
-          const idx = getGridIndex(mapW, x + cell.dx, y + cell.dy);
-          if (grid[idx] !== grassIndex) return false;
-        }
-        for (const cell of stamp.cells) {
-          const idx = getGridIndex(mapW, x + cell.dx, y + cell.dy);
-          grid[idx] = cell.paletteIndex;
-        }
-        return true;
-      }
-
-      function placeStampNear(grid, mapW, mapH, stamp, cx, cy, grassIndex, radius, attempts) {
-        for (let i = 0; i < attempts; i += 1) {
-          const ox = Math.floor(cx + (Math.random() * 2 - 1) * radius);
-          const oy = Math.floor(cy + (Math.random() * 2 - 1) * radius);
-          const x = Math.max(0, Math.min(mapW - stamp.width, ox));
-          const y = Math.max(0, Math.min(mapH - stamp.height, oy));
-          if (placeStampAt(grid, mapW, mapH, stamp, x, y, grassIndex)) return true;
-        }
-        return false;
-      }
-
-      function carvePath(grid, mapW, mapH, pathId, startX, startY, endX, endY) {
-        let x = startX;
-        let y = startY;
-        const maxSteps = mapW * mapH;
-        let steps = 0;
-        while ((x !== endX || y !== endY) && steps < maxSteps) {
-          grid[getGridIndex(mapW, x, y)] = pathId;
-          const moveX = Math.random() < 0.5;
-          if (moveX && x !== endX) {
-            x += endX > x ? 1 : -1;
-          } else if (y !== endY) {
-            y += endY > y ? 1 : -1;
-          } else if (x !== endX) {
-            x += endX > x ? 1 : -1;
-          }
-          if (Math.random() < 0.15) {
-            const wiggle = Math.random() < 0.5 ? -1 : 1;
-            const nx = Math.max(1, Math.min(mapW - 2, x + wiggle));
-            const ny = Math.max(1, Math.min(mapH - 2, y + wiggle));
-            x = nx;
-            y = ny;
-          }
-          steps += 1;
-        }
-        grid[getGridIndex(mapW, endX, endY)] = pathId;
-      }
-
-      function carveRiver(grid, mapW, mapH, waterId) {
-        const horizontal = Math.random() < 0.5;
-        const width = 2 + Math.floor(Math.random() * 2);
-        if (horizontal) {
-          let y = 2 + Math.floor(Math.random() * (mapH - 4));
-          for (let x = 0; x < mapW; x += 1) {
-            if (Math.random() < 0.25) {
-              y = Math.max(1, Math.min(mapH - 2, y + (Math.random() < 0.5 ? -1 : 1)));
-            }
-            for (let w = 0; w < width; w += 1) {
-              const ry = Math.max(0, Math.min(mapH - 1, y + w));
-              grid[getGridIndex(mapW, x, ry)] = waterId;
-            }
-          }
-        } else {
-          let x = 2 + Math.floor(Math.random() * (mapW - 4));
-          for (let y = 0; y < mapH; y += 1) {
-            if (Math.random() < 0.25) {
-              x = Math.max(1, Math.min(mapW - 2, x + (Math.random() < 0.5 ? -1 : 1)));
-            }
-            for (let w = 0; w < width; w += 1) {
-              const rx = Math.max(0, Math.min(mapW - 1, x + w));
-              grid[getGridIndex(mapW, rx, y)] = waterId;
-            }
-          }
-        }
-      }
-
       function hashGrid(grid) {
         let hash = 2166136261;
         for (let i = 0; i < grid.length; i += 1) {
@@ -695,21 +568,30 @@ const imageInput = document.getElementById("imageInput");
         return hash >>> 0;
       }
 
-      function generateNewMap(mapW, mapH) {
+      function mapStampForServer(stamp) {
+        return {
+          width: stamp.width,
+          height: stamp.height,
+          size: stamp.size,
+          type: stamp.type,
+          touchesEdge: stamp.touchesEdge,
+          cells: stamp.cells
+            .map((cell) => {
+              if (cell.paletteIndex != null) {
+                return { dx: cell.dx, dy: cell.dy, paletteIndex: cell.paletteIndex };
+              }
+              if (!tilesetInfo) return null;
+              const tile = tilesetInfo.tiles[cell.tileId];
+              if (!tile) return null;
+              const paletteIndex = addTileToPalette(tile);
+              return { dx: cell.dx, dy: cell.dy, paletteIndex };
+            })
+            .filter(Boolean),
+        };
+      }
+
+      async function requestGeneratedMap(mapW, mapH) {
         if (!tilesetInfo || !analysisInfo) return null;
-        const customStamps = analysisInfo.customStamps || [];
-        const customHouses = customStamps.filter((s) => s.type === "house");
-        const customTrees = lastTreeStamp
-          ? [lastTreeStamp]
-          : customStamps.filter((s) => s.type === "tree");
-        const customRocks = lastRockStamp
-          ? [lastRockStamp]
-          : customStamps.filter((s) => s.type === "rock");
-        const customWalls = customStamps.filter((s) => s.type === "wall");
-        const customNPCs = lastNpcStamp
-          ? [lastNpcStamp]
-          : customStamps.filter((s) => s.type === "npc");
-        const customDecors = customStamps.filter((s) => s.type === "decor");
         let grassIndex = manualSelection.grassId;
         if (grassIndex == null) {
           const fallback = tilesetInfo.tiles[analysisInfo.grassId];
@@ -719,387 +601,40 @@ const imageInput = document.getElementById("imageInput");
           }
         }
         if (grassIndex == null) return null;
-        const tallGrassIndex = manualSelection.tallGrassId;
-        const waterIndex = manualSelection.waterId;
-        const pathIndex = manualSelection.pathId;
 
-        const grid = new Array(mapW * mapH).fill(grassIndex);
-        const area = mapW * mapH;
+        const analysisInfoForServer = {
+          stamps: analysisInfo.stamps.map(mapStampForServer),
+          decorIds: analysisInfo.decorIds || [],
+          singleDecorIds: analysisInfo.singleDecorIds || [],
+          useManualOnly: analysisInfo.useManualOnly,
+          customStamps: (analysisInfo.customStamps || []).map(mapStampForServer),
+        };
 
-        if (tallGrassIndex != null && tallGrassIndex !== grassIndex) {
-          const tallCount = Math.max(3, Math.floor(area / 140));
-          for (let i = 0; i < tallCount; i += 1) {
-            const tx = 2 + Math.floor(Math.random() * (mapW - 4));
-            const ty = 2 + Math.floor(Math.random() * (mapH - 4));
-            const radius = 2 + Math.floor(Math.random() * 2);
-            for (let y = -radius; y <= radius; y += 1) {
-              for (let x = -radius; x <= radius; x += 1) {
-                const dx = tx + x;
-                const dy = ty + y;
-                if (dx < 0 || dy < 0 || dx >= mapW || dy >= mapH) continue;
-                if (x * x + y * y > radius * radius) continue;
-                const idx = getGridIndex(mapW, dx, dy);
-                if (grid[idx] === grassIndex) {
-                  grid[idx] = tallGrassIndex;
-                }
-              }
-            }
-          }
-        }
+        const manualSelectionForServer = {
+          grassId: manualSelection.grassId,
+          tallGrassId: manualSelection.tallGrassId,
+          waterId: manualSelection.waterId,
+          pathId: manualSelection.pathId,
+          decorIds: manualSelection.decorIds || [],
+          customStamps: (manualSelection.customStamps || []).map(mapStampForServer),
+        };
 
-        const edgeStampPool = [];
-        if (customRocks.length > 0) edgeStampPool.push(customRocks);
-        if (customTrees.length > 0) edgeStampPool.push(customTrees);
-
-        if (edgeStampPool.length > 0 || (waterIndex != null && waterIndex !== grassIndex)) {
-          const edgeNoise = [];
-          for (let x = 0; x < mapW; x += 1) {
-            edgeNoise[x] = 1 + Math.floor(Math.random() * 3);
-          }
-          for (let y = 0; y < mapH; y += 1) {
-            edgeNoise[mapW + y] = 1 + Math.floor(Math.random() * 3);
-          }
-
-          const edgeTypes = [];
-          const typeOptions = [];
-          if (waterIndex != null && waterIndex !== grassIndex) typeOptions.push("water");
-          if (customRocks.length > 0) typeOptions.push("rocks");
-          if (customTrees.length > 0) typeOptions.push("trees");
-          if (typeOptions.length === 0) {
-            typeOptions.push("water");
-          }
-
-          const waterSides = Math.random() < 0.4 ? 1 : 0;
-          const waterSideIndexes = [];
-          if (waterSides > 0 && typeOptions.includes("water")) {
-            const pick = Math.floor(Math.random() * 4);
-            waterSideIndexes.push(pick);
-          }
-
-          for (let side = 0; side < 4; side += 1) {
-            const len = side < 2 ? mapW : mapH;
-            edgeTypes[side] = [];
-            if (waterSideIndexes.includes(side)) {
-              for (let i = 0; i < len; i += 1) {
-                edgeTypes[side][i] = "water";
-              }
-              continue;
-            }
-            let pos = 0;
-            while (pos < len) {
-              const segmentLen = 6 + Math.floor(Math.random() * 10);
-              const pool = typeOptions.filter((t) => t !== "water");
-              const type =
-                pool.length > 0 ? pool[Math.floor(Math.random() * pool.length)] : "water";
-              for (let i = 0; i < segmentLen && pos < len; i += 1, pos += 1) {
-                edgeTypes[side][pos] = type;
-              }
-            }
-          }
-
-          for (let x = 0; x < mapW; x += 1) {
-            for (let y = 0; y < mapH; y += 1) {
-              const edgeTop = y <= edgeNoise[x];
-              const edgeBottom = y >= mapH - 1 - edgeNoise[x];
-              const edgeLeft = x <= edgeNoise[mapW + y];
-              const edgeRight = x >= mapW - 1 - edgeNoise[mapW + y];
-              if (!edgeTop && !edgeBottom && !edgeLeft && !edgeRight) continue;
-
-              let type = null;
-              if (edgeTop) type = edgeTypes[0][x];
-              else if (edgeBottom) type = edgeTypes[1][x];
-              else if (edgeLeft) type = edgeTypes[2][y];
-              else if (edgeRight) type = edgeTypes[3][y];
-
-              const idx = getGridIndex(mapW, x, y);
-              if (type === "water" && waterIndex != null && waterIndex !== grassIndex) {
-                grid[idx] = waterIndex;
-                continue;
-              }
-              if (type === "rocks" && customRocks.length > 0) {
-                const stamp = customRocks[Math.floor(Math.random() * customRocks.length)];
-                if (stamp) placeStampAt(grid, mapW, mapH, stamp, x, y, grassIndex);
-                continue;
-              }
-              if (type === "trees" && customTrees.length > 0) {
-                const stamp = customTrees[Math.floor(Math.random() * customTrees.length)];
-                if (stamp) placeStampAt(grid, mapW, mapH, stamp, x, y, grassIndex);
-              }
-            }
-          }
-        }
-
-        const bigCount = Math.min(
-          analysisInfo.stamps.length,
-          Math.max(1, Math.floor(area / (420 + Math.random() * 120)))
-        );
-        const mediumCount = Math.min(
-          analysisInfo.stamps.length,
-          Math.max(2, Math.floor(area / (220 + Math.random() * 80)))
-        );
-        const smallCount = Math.min(
-          analysisInfo.stamps.length,
-          Math.max(3, Math.floor(area / (120 + Math.random() * 40)))
-        );
-
-        const usableStamps = analysisInfo.stamps.filter((s) => !s.touchesEdge);
-        const fallbackStamps = usableStamps.length > 0 ? usableStamps : analysisInfo.stamps;
-        const bigStamps = fallbackStamps.filter((s) => s.size >= 30);
-        const mediumStamps = fallbackStamps.filter((s) => s.size >= 8 && s.size < 30);
-        const smallStamps = fallbackStamps.filter((s) => s.size >= 2 && s.size < 8);
-        const houseStamps = fallbackStamps.filter(
-          (s) => s.size >= 12 && s.width >= 3 && s.height >= 3
-        );
-
-        if (waterIndex != null && waterIndex !== grassIndex) {
-          carveRiver(grid, mapW, mapH, waterIndex);
-        }
-
-        if (pathIndex != null && pathIndex !== grassIndex) {
-          const entryCount = 2 + Math.floor(Math.random() * 2);
-          const entries = [];
-          for (let i = 0; i < entryCount; i += 1) {
-            const side = Math.floor(Math.random() * 4);
-            let x = 0;
-            let y = 0;
-            if (side === 0) {
-              x = 1 + Math.floor(Math.random() * (mapW - 2));
-              y = 0;
-            } else if (side === 1) {
-              x = 1 + Math.floor(Math.random() * (mapW - 2));
-              y = mapH - 1;
-            } else if (side === 2) {
-              x = 0;
-              y = 1 + Math.floor(Math.random() * (mapH - 2));
-            } else {
-              x = mapW - 1;
-              y = 1 + Math.floor(Math.random() * (mapH - 2));
-            }
-            entries.push([x, y]);
-          }
-
-          const hubX = Math.floor(mapW / 2 + (Math.random() * 4 - 2));
-          const hubY = Math.floor(mapH / 2 + (Math.random() * 4 - 2));
-          for (const [sx, sy] of entries) {
-            carvePath(grid, mapW, mapH, pathIndex, sx, sy, hubX, hubY);
-          }
-          if (Math.random() < 0.7) {
-            const extraX = 1 + Math.floor(Math.random() * (mapW - 2));
-            const extraY = 1 + Math.floor(Math.random() * (mapH - 2));
-            carvePath(grid, mapW, mapH, pathIndex, hubX, hubY, extraX, extraY);
-          }
-        }
-
-        if (!analysisInfo.useManualOnly) {
-          const needsPath = pathIndex != null && pathIndex !== grassIndex;
-          const houseCount = Math.max(2, Math.floor(area / 250));
-          for (let i = 0; i < houseCount; i += 1) {
-            const source = customHouses.length > 0 ? customHouses : houseStamps;
-            const stamp = source[Math.floor(Math.random() * source.length)];
-            if (stamp) placeStamp(grid, mapW, mapH, stamp, needsPath, pathIndex, grassIndex);
-          }
-          const wallCount = Math.max(1, Math.floor(area / 320));
-          for (let i = 0; i < wallCount; i += 1) {
-            const stamp = customWalls[Math.floor(Math.random() * customWalls.length)];
-            if (stamp) placeStamp(grid, mapW, mapH, stamp, needsPath, pathIndex, grassIndex);
-          }
-          for (let i = 0; i < bigCount; i += 1) {
-            const stamp = bigStamps[Math.floor(Math.random() * bigStamps.length)];
-            if (stamp) placeStamp(grid, mapW, mapH, stamp, needsPath, pathIndex, grassIndex);
-          }
-          for (let i = 0; i < mediumCount; i += 1) {
-            const stamp = mediumStamps[Math.floor(Math.random() * mediumStamps.length)];
-            if (stamp) placeStamp(grid, mapW, mapH, stamp, needsPath, pathIndex, grassIndex);
-          }
-          for (let i = 0; i < smallCount; i += 1) {
-            const stamp = smallStamps[Math.floor(Math.random() * smallStamps.length)];
-            if (stamp) placeStamp(grid, mapW, mapH, stamp, false, pathIndex, grassIndex);
-          }
-        }
-
-        if (analysisInfo.useManualOnly) {
-          const bigMap = area >= 1200;
-          if (bigMap && customHouses.length > 0) {
-            const townCount = Math.max(2, Math.min(4, Math.floor(area / 900)));
-            const centers = [];
-            for (let i = 0; i < townCount; i += 1) {
-              const cx = 3 + Math.floor(Math.random() * (mapW - 6));
-              const cy = 3 + Math.floor(Math.random() * (mapH - 6));
-              centers.push([cx, cy]);
-            }
-            if (pathIndex != null && pathIndex !== grassIndex) {
-              for (let i = 1; i < centers.length; i += 1) {
-                const [sx, sy] = centers[i - 1];
-                const [ex, ey] = centers[i];
-                carvePath(grid, mapW, mapH, pathIndex, sx, sy, ex, ey);
-              }
-            }
-            centers.forEach(([cx, cy]) => {
-              const houseCount = 3 + Math.floor(Math.random() * 3);
-              for (let i = 0; i < houseCount; i += 1) {
-                const stamp = customHouses[Math.floor(Math.random() * customHouses.length)];
-                if (stamp) placeStampNear(grid, mapW, mapH, stamp, cx, cy, grassIndex, 6, 80);
-              }
-              if (customWalls.length > 0) {
-                const wallStamp = customWalls[Math.floor(Math.random() * customWalls.length)];
-                const halfW = 6;
-                const halfH = 5;
-                for (let x = cx - halfW; x <= cx + halfW; x += 1) {
-                  placeStampAt(grid, mapW, mapH, wallStamp, x, cy - halfH, grassIndex);
-                  placeStampAt(grid, mapW, mapH, wallStamp, x, cy + halfH, grassIndex);
-                }
-                for (let y = cy - halfH; y <= cy + halfH; y += 1) {
-                  placeStampAt(grid, mapW, mapH, wallStamp, cx - halfW, y, grassIndex);
-                  placeStampAt(grid, mapW, mapH, wallStamp, cx + halfW, y, grassIndex);
-                }
-              }
-              if (customTrees.length > 0) {
-                const treeCount = 6 + Math.floor(Math.random() * 6);
-                for (let i = 0; i < treeCount; i += 1) {
-                  const stamp = customTrees[Math.floor(Math.random() * customTrees.length)];
-                  if (stamp) {
-                    placeStampNear(grid, mapW, mapH, stamp, cx, cy, grassIndex, 10, 60);
-                  }
-                }
-              }
-            });
-
-            const isFarFromTowns = (x, y, minDist) => {
-              const minDistSq = minDist * minDist;
-              for (const [tx, ty] of centers) {
-                const dx = x - tx;
-                const dy = y - ty;
-                if (dx * dx + dy * dy < minDistSq) return false;
-              }
-              return true;
-            };
-
-            if (customTrees.length > 0) {
-              const forestCount = Math.max(2, Math.floor(area / 1100));
-              for (let i = 0; i < forestCount; i += 1) {
-                const fx = 4 + Math.floor(Math.random() * (mapW - 8));
-                const fy = 4 + Math.floor(Math.random() * (mapH - 8));
-                if (!isFarFromTowns(fx, fy, 10)) continue;
-                const treeCount = 26 + Math.floor(Math.random() * 18);
-                for (let j = 0; j < treeCount; j += 1) {
-                  const stamp = customTrees[Math.floor(Math.random() * customTrees.length)];
-                  if (stamp) {
-                    placeStampNear(grid, mapW, mapH, stamp, fx, fy, grassIndex, 8, 80);
-                  }
-                }
-              }
-            }
-
-            if (customRocks.length > 0) {
-              const mountainCount = Math.max(1, Math.floor(area / 1400));
-              for (let i = 0; i < mountainCount; i += 1) {
-                const mx = 4 + Math.floor(Math.random() * (mapW - 8));
-                const my = 4 + Math.floor(Math.random() * (mapH - 8));
-                if (!isFarFromTowns(mx, my, 12)) continue;
-                const rockCount = 24 + Math.floor(Math.random() * 16);
-                for (let j = 0; j < rockCount; j += 1) {
-                  const stamp = customRocks[Math.floor(Math.random() * customRocks.length)];
-                  if (stamp) {
-                    placeStampNear(grid, mapW, mapH, stamp, mx, my, grassIndex, 8, 100);
-                  }
-                }
-              }
-            }
-
-        if (waterIndex != null && waterIndex !== grassIndex) {
-          const lakeCount = Math.max(1, Math.floor(area / 1600));
-          for (let i = 0; i < lakeCount; i += 1) {
-            const lx = 4 + Math.floor(Math.random() * (mapW - 8));
-                const ly = 4 + Math.floor(Math.random() * (mapH - 8));
-                if (!isFarFromTowns(lx, ly, 10)) continue;
-                const radius = 2 + Math.floor(Math.random() * 3);
-                for (let y = -radius; y <= radius; y += 1) {
-                  for (let x = -radius; x <= radius; x += 1) {
-                    const dx = lx + x;
-                    const dy = ly + y;
-                    if (dx < 0 || dy < 0 || dx >= mapW || dy >= mapH) continue;
-                    if (x * x + y * y > radius * radius) continue;
-                    const idx = getGridIndex(mapW, dx, dy);
-                    if (grid[idx] === grassIndex) {
-                      grid[idx] = waterIndex;
-                    }
-                  }
-                }
-              }
-            }
-          } else {
-            if (customHouses.length > 0) {
-              const houseCount = Math.max(1, Math.floor(area / 260));
-              for (let i = 0; i < houseCount; i += 1) {
-                const stamp = customHouses[Math.floor(Math.random() * customHouses.length)];
-                if (stamp) placeStamp(grid, mapW, mapH, stamp, false, pathIndex, grassIndex);
-              }
-            }
-            if (customTrees.length > 0) {
-              const treeCount = Math.max(2, Math.floor(area / 180));
-              for (let i = 0; i < treeCount; i += 1) {
-                const stamp = customTrees[Math.floor(Math.random() * customTrees.length)];
-                if (stamp) placeStamp(grid, mapW, mapH, stamp, false, pathIndex, grassIndex);
-              }
-            }
-            if (customRocks.length > 0) {
-              const rockCount = Math.max(4, Math.floor(area / 140));
-              for (let i = 0; i < rockCount; i += 1) {
-                const stamp = customRocks[Math.floor(Math.random() * customRocks.length)];
-                if (stamp) placeStamp(grid, mapW, mapH, stamp, false, pathIndex, grassIndex);
-              }
-            }
-            if (customWalls.length > 0) {
-              const wallCount = Math.max(2, Math.floor(area / 200));
-              for (let i = 0; i < wallCount; i += 1) {
-                const stamp = customWalls[Math.floor(Math.random() * customWalls.length)];
-                if (stamp) placeStamp(grid, mapW, mapH, stamp, false, pathIndex, grassIndex);
-              }
-            }
-          }
-        }
-
-        const npcCount = Math.max(1, Math.floor(area / 180));
-        for (let i = 0; i < npcCount; i += 1) {
-          if (customNPCs.length === 0) break;
-          const stamp = customNPCs[Math.floor(Math.random() * customNPCs.length)];
-          if (stamp) placeStamp(grid, mapW, mapH, stamp, false, pathIndex, grassIndex);
-        }
-
-        const decorCount = Math.floor(area / (70 + Math.random() * 40));
-        const npcTileSet = new Set();
-        for (const stamp of customNPCs) {
-          for (const cell of stamp.cells) {
-            npcTileSet.add(cell.paletteIndex);
-          }
-        }
-        if (analysisInfo.useManualOnly) {
-          return { grid, mapW, mapH };
-        }
-        if (customDecors.length > 0) {
-          for (let i = 0; i < decorCount; i += 1) {
-            const stamp = customDecors[Math.floor(Math.random() * customDecors.length)];
-            if (stamp) placeStamp(grid, mapW, mapH, stamp, false, pathIndex, grassIndex);
-          }
-        } else {
-          const decorPool =
-            analysisInfo.singleDecorIds.length > 0
-              ? analysisInfo.singleDecorIds
-              : analysisInfo.decorIds;
-          const filteredDecorPool = decorPool.filter((id) => !npcTileSet.has(id));
-          for (let i = 0; i < decorCount; i += 1) {
-            if (filteredDecorPool.length === 0) break;
-            const idx = Math.floor(Math.random() * grid.length);
-            if (grid[idx] !== grassIndex) continue;
-            const decorId =
-              filteredDecorPool[Math.floor(Math.random() * filteredDecorPool.length)];
-            grid[idx] = decorId;
-          }
-        }
-
-        return { grid, mapW, mapH };
+        const res = await fetch("/api/generateMap", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mapW,
+            mapH,
+            analysisInfo: analysisInfoForServer,
+            manualSelection: manualSelectionForServer,
+            lastNpcStamp: lastNpcStamp ? mapStampForServer(lastNpcStamp) : null,
+            lastTreeStamp: lastTreeStamp ? mapStampForServer(lastTreeStamp) : null,
+            lastRockStamp: lastRockStamp ? mapStampForServer(lastRockStamp) : null,
+          }),
+        });
+        if (!res.ok) return null;
+        return await res.json();
       }
-
       function renderGeneratedMap(grid, mapW, mapH, tiles, tileSize) {
         genCanvas.width = mapW * tileSize;
         genCanvas.height = mapH * tileSize;
@@ -2647,7 +2182,7 @@ const imageInput = document.getElementById("imageInput");
         refreshPreviews();
       });
 
-      genBtn.addEventListener("click", () => {
+      genBtn.addEventListener("click", async () => {
         if (!tilesetInfo || !analysisInfo) return;
         applyManualOverrides();
         const mapW = Number(mapWidthInput.value);
@@ -2657,7 +2192,7 @@ const imageInput = document.getElementById("imageInput");
         let result = null;
         let attempts = 0;
         while (attempts < 10) {
-          const candidate = generateNewMap(mapW, mapH);
+          const candidate = await requestGeneratedMap(mapW, mapH);
           if (!candidate) break;
           const hash = hashGrid(candidate.grid);
           if (hash !== lastGeneratedHash) {
